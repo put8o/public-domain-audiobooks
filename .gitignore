@@ -1,0 +1,36 @@
+# Others
+*.txt
+*.html
+public-domain-audiobooks
+
+# Binaries for programs and plugins
+*.exe
+*.dll
+*.so
+*.dylib
+*.rpm
+*.deb
+*.wasm
+*.bin
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go generate command
+*.gen.go
+
+# Dependencies
+vendor/
+
+# Go module cache
+.cache/go-build/
+
+# IDE specific files
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# OS generated files
+.DS_Store
+Thumbs.db
