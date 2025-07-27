@@ -18,25 +18,36 @@ type ResponseBody struct {
 	Results string `json:"results"`
 }
 
-func main() {
-	pagesToFetch := 824
-	workers := runtime.NumCPU()
+type PageWorkload struct {
+	Request *http.Request
+	Errors  []error
+}
 
-	requests := make(chan *http.Request, pagesToFetch)
+func main() {
+	retryCount := 10
+	pagesToFetch := 824
+	workers := runtime.NumCPU() * 4
+
+	requests := make(chan PageWorkload, pagesToFetch)
 	responses := make(chan string, pagesToFetch)
+	failures := make(chan PageWorkload, pagesToFetch)
 
 	client := &http.Client{Timeout: 20 * time.Second}
 	var wg sync.WaitGroup
 
+	wg.Add(pagesToFetch)
+
 	go RequestGenerator(requests, pagesToFetch)
 
 	go func() {
-		for w := 0; w < workers; w++ {
-			wg.Add(1)
-			go RequestProcessor(requests, responses, client, &wg)
+		defer close(requests)
+		defer close(failures)
+		defer close(responses)
+
+		for range workers {
+			go RequestProcessor(requests, responses, failures, client, &wg, retryCount)
 		}
 		wg.Wait()
-		close(responses)
 	}()
 
 	bookUrls := []string{}
@@ -59,6 +70,30 @@ func main() {
 		log.Fatal("failed to write to file:", err)
 	}
 
+	errorCounts := make(map[string]int)
+	for f := range failures {
+		for _, e := range f.Errors {
+			errorCounts[e.Error()] = errorCounts[e.Error()] + 1
+		}
+	}
+
+	if len(errorCounts) > 0 {
+		uniqueErrorMessages := []string{}
+		fmt.Println("Error messages:")
+		for e := range errorCounts {
+			uniqueErrorMessages = append(uniqueErrorMessages, fmt.Sprintf("%s: %v", e, errorCounts[e]))
+		}
+
+		fmt.Println("writing errors to disk")
+
+		errorContent := strings.Join(uniqueErrorMessages, "\n")
+
+		err = os.WriteFile("errors.txt", []byte(errorContent), 0644)
+		if err != nil {
+			log.Fatal("failed to write to file:", err)
+		}
+	}
+
 	fmt.Println("done")
 
 }
@@ -78,10 +113,10 @@ func BuildHTTPRequest(pageNumber int) *http.Request {
 	return req
 }
 
-func RequestGenerator(requests chan *http.Request, pageCount int) {
-	defer close(requests)
+func RequestGenerator(requests chan PageWorkload, pageCount int) {
+	//defer close(requests)
 	for i := 1; i <= pageCount; i++ {
-		requests <- BuildHTTPRequest(i)
+		requests <- PageWorkload{Request: BuildHTTPRequest(i)}
 	}
 }
 
@@ -107,13 +142,21 @@ func ExecuteHTTPRequest(r *http.Request, c *http.Client) (string, error) {
 	return rp.Results, nil
 }
 
-func RequestProcessor(requests chan *http.Request, responses chan string, c *http.Client, wg *sync.WaitGroup) {
-	defer wg.Done()
+func RequestProcessor(requests chan PageWorkload, responses chan<- string, failures chan<- PageWorkload, c *http.Client, wg *sync.WaitGroup, retryCount int) {
 	for r := range requests {
 		// fmt.Println("processing")
-		res, err := ExecuteHTTPRequest(r, c)
-		if err == nil {
+		res, err := ExecuteHTTPRequest(r.Request, c)
+		if err != nil {
+			r.Errors = append(r.Errors, err)
+			if len(r.Errors) < retryCount {
+				requests <- r
+			} else {
+				failures <- r
+				wg.Done()
+			}
+		} else {
 			responses <- res
+			wg.Done()
 		}
 	}
 }

@@ -1,6 +1,7 @@
 # Others
 *.txt
 *.html
+*.bak
 public-domain-audiobooks
 
 # Binaries for programs and plugins
