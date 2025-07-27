@@ -13,10 +13,25 @@ The second stage of the scrapping process involves hitting the URLs collected in
 Finally, the complete collected data is written to a postgres database.
 
 ---
+### High Level Process Flow Diagram
+```mermaid
+graph LR
+    A[Building HTTP Requests] --> B[Worker 1: Make HTTP Call]
+    A --> C[Worker 2: Make HTTP Call]
+    A --> D[Worker N: Make HTTP Call]
+
+    B --> E[Common Results Channel]
+    C --> E
+    D --> E
+
+    E --> F[Collect All Results]
+```
+
+---
 
 ### Roadmap
 - Scrape audiobook URLs concurrently ✅
-- Auto-retry on error ⏳
+- Auto-retry on error ✅
 - Scrape audiobook data ⏳
 - Write to a postgres database ⏳
 ---
